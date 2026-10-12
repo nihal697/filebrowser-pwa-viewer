@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0f7bff" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="manifest" href="./manifest.json" />
+<link rel="apple-touch-icon" href="./icons/icon-192.png" />
+<title>Results Viewer</title>
+<style>
+:root{--bg:#0f172a;--bg2:#0b122b;--card:rgba(255,255,255,.06);--txt:#e6eef8;--mut:#94a3b8;--bd:rgba(255,255,255,.12)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,sans-serif;background:radial-gradient(1200px 800px at 50% 0,var(--bg),var(--bg2));color:var(--txt);line-height:1.55;min-height:100dvh;display:flex;flex-direction:column}
+header{position:sticky;top:0;z-index:10;backdrop-filter:blur(10px);background:rgba(15,23,42,.78);border-bottom:1px solid var(--bd);padding:env(safe-area-inset-top,0) 16px 10px}
+.wrap{max-width:980px;margin:0 auto;padding:14px 16px 24px;width:100%}
+h1{font-size:clamp(18px,4.2vw,26px);letter-spacing:-.02em}
+.sub{color:var(--mut);font-size:clamp(12px,3.2vw,14px);margin-top:4px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;margin-top:12px;overflow:hidden}
+.card>h2{padding:12px 14px 2px;font-size:clamp(14px,3.6vw,17px)}
+.body{padding:8px 14px 14px;display:flex;flex-direction:column;gap:10px}
+.list{display:flex;flex-direction:column;gap:8px}
+a.item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:12px;text-decoration:none;color:var(--txt);background:rgba(255,255,255,.05)}
+a.item:active{transform:scale(.995)}
+.name{font-weight:600;font-size:clamp(13px,3.4vw,15px);word-break:break-word}
+.dir{color:var(--mut);font-size:11px;display:block;font-weight:400}
+.meta{color:var(--mut);font-size:11px;flex-shrink:0}
+.imgs{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:10px}
+.img-card{border:1px solid var(--bd);border-radius:12px;overflow:hidden;background:#0a1328}
+.img-card img{width:100%;height:auto;display:block}
+.img-cap{padding:6px 10px 8px;color:var(--mut);font-size:11px;word-break:break-word}
+details{border:1px solid var(--bd);border-radius:12px;background:rgba(255,255,255,.05)}
+summary{padding:10px 12px;font-weight:600;cursor:pointer;list-style:none;font-size:clamp(13px,3.4vw,14px)}
+summary::-webkit-details-marker{display:none}
+pre{margin:0 12px 12px;padding:10px 12px;border-radius:10px;background:#0a1328;border:1px solid var(--bd);overflow:auto;max-height:60dvh;white-space:pre-wrap;word-break:break-word;font-size:12px}
+footer{margin-top:auto;padding:12px 16px 18px;color:var(--mut);text-align:center;font-size:12px}
+.pill{display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;border:1px solid var(--bd);background:rgba(255,255,255,.08);font-size:11px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.tip{padding:10px 12px;border-radius:12px;border:1px dashed var(--bd);background:rgba(15,123,255,.12);margin-top:10px;font-size:13px}
+.search{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--bd);background:#0a1328;color:var(--txt);font-size:14px}
+.err{padding:24px;text-align:center;color:var(--mut)}
+</style>
+<script src="./config.js"></script>
+</head>
+<body>
+<header><div class="wrap" style="padding:8px 0 4px">
+<h1 id="t">Results Viewer</h1>
+<p class="sub" id="st"></p>
+<div class="row"><span class="pill">Installable PWA</span><span class="pill">Works offline</span><span class="pill" id="cnt"></span></div>
+<div class="tip" id="tip">📲 <b>Install:</b> Chrome on Android → ⋮ → <b>Add to Home screen</b> / <b>Install app</b>.</div>
+</div></header>
+<main class="wrap" id="app"><div class="err">Loading…</div></main>
+<footer id="ft"></footer>
+<script>
+const C = window.RV || {};
+function esc(s){return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function fmt(n){if(n<1024)return n+' B';const u=['KB','MB','GB'];let i=-1;do{n/=1024;i++;}while(n>=1024&&i<2);return n.toFixed(1)+' '+u[i];}
+function link(f,label){
+  const a=document.createElement('a');a.className='item';a.href='./'+f.path;a.target='_blank';a.rel='noopener';
+  a.innerHTML='<span class="name">'+esc(label||f.name)+(f.dir&&f.dir!=='.'?'<span class="dir">'+esc(f.dir)+'</span>':'')+'</span><span class="meta">'+fmt(f.size)+'</span>';
+  return a;
+}
+function imgCard(f){
+  const w=document.createElement('div');w.className='img-card';
+  const img=document.createElement('img');img.loading='lazy';img.src='./'+f.path;img.alt=f.name;
+  const c=document.createElement('div');c.className='img-cap';c.textContent=(f.dir!=='.'?f.dir+'/':'')+f.name+' · '+fmt(f.size);
+  w.appendChild(img);w.appendChild(c);return w;
+}
+function section(title){
+  const s=document.createElement('section');s.className='card';
+  s.innerHTML='<h2>'+esc(title)+'</h2>';
+  const b=document.createElement('div');b.className='body';s.appendChild(b);return [s,b];
+}
+async function main(){
+  const app=document.getElementById('app');
+  let M;
+  try{ M = await (await fetch('./data/manifest.json')).json(); }
+  catch(e){ app.innerHTML='<div class="err">Could not load data/manifest.json</div>'; return; }
+  document.title=M.title||C.title||'Results Viewer';
+  document.getElementById('t').textContent=M.title||C.title||'Results Viewer';
+  document.getElementById('st').textContent=(M.subtitle||C.subtitle||'')+(M.generated?' · built '+M.generated:'');
+  document.getElementById('cnt').textContent=M.count+' files · '+fmt(M.bytes);
+  document.getElementById('ft').textContent=(M.title||'')+' · offline-capable viewer';
+  app.innerHTML='';
+  const F=M.files, lim=(C.inlineLimit||400*1024);
+  const isTop=f=>!f.path.slice(5).includes('/');
+  const md=F.filter(f=>/\.(md|txt|log)$/i.test(f.name)&&isTop(f));
+  const rest_txt=F.filter(f=>/\.(md|txt|log)$/i.test(f.name)&&!isTop(f));
+  const imgs=F.filter(f=>f.kind==='image');
+  const data=F.filter(f=>/\.(csv|json)$/i.test(f.name));
+  const other=F.filter(f=>f.kind==='other');
+  // Reports (inline)
+  if(md.length||rest_txt.length){
+    const [s,b]=section('Reports');app.appendChild(s);
+    for(const f of [...md,...rest_txt]){
+      const d=document.createElement('details');const sm=document.createElement('summary');
+      sm.textContent=(f.dir!=='.'?f.dir+'/':'')+f.name+' · '+fmt(f.size);d.appendChild(sm);
+      const pre=document.createElement('pre');pre.textContent='Loading…';d.appendChild(pre);
+      d.appendChild(link(f,'Open raw file'));
+      d.addEventListener('toggle',async()=>{
+        if(!d.open||pre.dataset.done)return;pre.dataset.done='1';
+        if(f.size>lim){pre.textContent='Too large to preview — open raw file.';return;}
+        try{const t=await(await fetch('./'+f.path)).text();pre.textContent=t;}
+        catch(e){pre.textContent='Failed to load.';}
+      });
+      b.appendChild(d);
+    }
+  }
+  // Charts
+  if(imgs.length){
+    const [s,b]=section('Charts ('+imgs.length+')');app.appendChild(s);
+    const byDir={};imgs.forEach(f=>{(byDir[f.dir]=byDir[f.dir]||[]).push(f);});
+    for(const dir of Object.keys(byDir).sort()){
+      if(dir!=='.'){const h=document.createElement('div');h.style.cssText='color:var(--mut);font-size:12px;margin-top:4px';h.textContent=dir+'/';b.appendChild(h);}
+      const g=document.createElement('div');g.className='imgs';
+      byDir[dir].forEach(f=>g.appendChild(imgCard(f)));b.appendChild(g);
+    }
+  }
+  // Data files
+  if(data.length){
+    const [s,b]=section('Data files (CSV / JSON)');app.appendChild(s);
+    const L=document.createElement('div');L.className='list';
+    data.forEach(f=>L.appendChild(link(f)));b.appendChild(L);
+  }
+  // Everything else
+  const [s,b]=section('All files');app.appendChild(s);
+  const inp=document.createElement('input');inp.className='search';inp.placeholder='Filter files…';b.appendChild(inp);
+  const L=document.createElement('div');L.className='list';b.appendChild(L);
+  function render(q){
+    L.innerHTML='';
+    F.filter(f=>!q||f.path.toLowerCase().includes(q.toLowerCase())).slice(0,400).forEach(f=>L.appendChild(link(f)));
+  }
+  inp.addEventListener('input',()=>render(inp.value));render('');
+  if('serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));}
+  let dp=null;
+  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;const t=document.getElementById('tip');t.style.borderStyle='solid';t.onclick=async()=>{if(dp){dp.prompt();await dp.userChoice;dp=null;}};});
+}
+main();
+</script>
+</body>
+</html>
